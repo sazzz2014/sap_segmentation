@@ -1,0 +1,6 @@
+.cache/
+bin/
+*.exe
+*.log
+.env
+.idea/

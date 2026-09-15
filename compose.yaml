@@ -1,0 +1,87 @@
+name: sap-segmentation-local
+
+x-import-env: &import-env
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: mesh_group
+  DB_USER: postgres
+  DB_PASSWORD: postgres
+  CONN_URI: http://mock-erp:8080/segmentation
+  CONN_AUTH_LOGIN_PWD: mock:mock
+  CONN_USER_AGENT: spacecount-test
+  CONN_TIMEOUT: "5"
+  CONN_INTERVAL: "0"
+  IMPORT_BATCH_SIZE: "2"
+  LOG_CLEANUP_MAX_AGE: "7"
+  LOG_DIR: /log
+
+services:
+  postgres:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: mesh_group
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mesh_group"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+  migrate:
+    image: postgres:17.6-bookworm
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: postgres
+    volumes:
+      - ./setup/install.sql:/setup/install.sql:ro
+    command: ["psql", "-h", "postgres", "-U", "postgres", "-d", "mesh_group", "-v", "ON_ERROR_STOP=1", "-f", "/setup/install.sql"]
+  mock-erp:
+    build:
+      context: .
+      target: mock
+    healthcheck:
+      test: ["CMD", "/app/mock-erp", "-healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  sap-segmentation:
+    build:
+      context: .
+      target: importer
+    environment: *import-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mock-erp:
+        condition: service_healthy
+    volumes:
+      - import-logs:/log
+  e2e-verify:
+    build:
+      context: .
+      target: verifier
+    environment: *import-env
+    depends_on:
+      sap-segmentation:
+        condition: service_completed_successfully
+    volumes:
+      - import-logs:/log
+  integration:
+    build:
+      context: .
+      target: source
+    profiles: ["test"]
+    environment:
+      TEST_DATABASE_URL: postgres://postgres:postgres@postgres:5432/mesh_group?sslmode=disable
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["go", "test", "-race", "-tags=integration", "./internal/storage/postgres", "-v"]
+
+volumes:
+  pg-data:
+  import-logs:

@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [{
+    "label": "Local E2E",
+    "type": "process",
+    "command": "sh",
+    "args": ["${workspaceFolder}/scripts/local-check.sh"],
+    "windows": { "command": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/scripts/local-check.ps1"] },
+    "problemMatcher": [],
+    "group": {"kind": "test", "isDefault": true}
+  }]
+}
